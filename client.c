@@ -16,6 +16,8 @@
 #define DATA_SIZE 512
 #define HEADER_SIZE 12
 
+struct sockaddr_in serv_addr, client_addr;
+
 struct header
 {
     int seq_num;
@@ -32,10 +34,32 @@ struct packet
     char data[DATA_SIZE];
 };
 
-
-int main(int argc, char ** argv)
+void check_num(int * num)
 {
-    struct sockaddr_in serv_addr, client_addr; //create the structs for the current client server connection
+    if(*num > 25600)
+    {
+        *num = 0; //or do i need to offset this 
+    }
+} 
+void sendpackets(int fd, int num_packets, int base_seq)
+{
+    for(int i = 0; i < num_packets; i++)
+    {
+        struct packet cur = {};
+        check_num(&base_seq);
+        cur.h.seq_num = base_seq;
+
+        int rd = read(fd, cur.data, DATA_SIZE); //read data and load into temp buffer, need to send packet now
+        //need to check whether or not rd is 0
+        printf("%d \n", cur.h.seq_num);
+        sendto(fd, &cur, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+
+        base_seq += rd;
+
+    }
+}
+int main(int argc, char ** argv)
+{    //create the structs for the current client server connection
     socklen_t client_length; 
     char * host_name = argv[1];
     int port = atoi(argv[2]); //grab the port from input for now
@@ -112,8 +136,18 @@ int main(int argc, char ** argv)
         bzero((char * ) &send_packet, sizeof(send_packet));
         int rd = read(fd, send_packet.data, DATA_SIZE);
         
-        send_packet.ack = 1;
+        send_packet.h.ack = 1;
         send_packet.h.ack_num = rec_packet.h.seq_num + 1;
+        send_packet.h.seq_num = rec_packet.h.ack_num;
+
+        check_num(&send_packet.h.seq_num);
+        check_num(&send_packet.h.ack_num);
+
+        sendto(fd, &send_packet, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+
+        sendpackets(fd, 9, send_packet.h.seq_num + (12 + rd));
+
+        //now have to send the remaining 9 packets
     }
     else
     {

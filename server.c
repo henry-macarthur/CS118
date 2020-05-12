@@ -98,11 +98,14 @@ int main(int argc, char ** argv)
                 check_num(&send_packet.h.ack_num);
 
                 printf("seq: %d, ack:%d \n", send_packet.h.seq_num, send_packet.h.ack_num);
-                if(sendto(socket_fd, &send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+                if(sendto(socket_fd, &send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) //send back handshake
                 {
                     printf("error!");
                     exit(1);
                 }
+
+                //am expecting ACK with data, followe by packets
+                //do a single read, then consec reads till input buffer is empty 
 
             }
         }
