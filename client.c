@@ -53,7 +53,10 @@ void sendpackets(int fd, int rdfd,  int num_packets, int base_seq)
         //need to check whether or not rd is 0
         //printf("%s \n", cur.data);
         //sendto(socket_fd, &send_packet, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr))
-        write(1, cur.data, rd);
+        write(1, &cur.data, rd);
+        // char * bff = ((char *)&cur);
+        // char send_bf[524];
+        // memcpy(send_bf, bff, 524);
         if(sendto(fd, &cur, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
         {
             printf("err! \n");
@@ -61,8 +64,6 @@ void sendpackets(int fd, int rdfd,  int num_packets, int base_seq)
         }
 
         base_seq += rd;
-
-        printf("%d \n", rd);
         if(rd != DATA_SIZE)
             return;
 
@@ -116,8 +117,7 @@ int main(int argc, char ** argv)
     struct packet send_packet = {};
     struct packet rec_packet = {};
     send_packet.h = cur_header;
-    
-    printf("seq: %d, ack: %d\n", current_seq, cur_header.ack_num);
+
 
     //
     if(sendto(socket_fd, &send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
@@ -136,7 +136,6 @@ int main(int argc, char ** argv)
     if(rec_packet.h.syn == 1 && rec_packet.h.ack == 1 && rec_packet.h.ack_num == send_packet.h.seq_num + 1)
     {
         valid = 1;
-        printf("seq: %d, ack: %d \n", rec_packet.h.seq_num, rec_packet.h.ack_num);
     }
     int fd;
     if(valid) //we are ready to start sending data!
@@ -152,12 +151,25 @@ int main(int argc, char ** argv)
         check_num(&send_packet.h.seq_num);
         check_num(&send_packet.h.ack_num);
         write(1, send_packet.data, rd);
-        if(sendto(socket_fd, &send_packet, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+        if(sendto(socket_fd, (char *)&send_packet, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
         {
             printf("err!");
             exit(1);
         }
         sendpackets(socket_fd, fd,  9, send_packet.h.seq_num + (12 + rd));
+
+        bzero((char * ) &send_packet, sizeof(send_packet));
+        send_packet.h.fin = 1;
+        sendto(socket_fd, (char *)&send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+
+        bzero((char * ) &rec_packet, sizeof(rec_packet));
+        recvfrom(socket_fd, &rec_packet, sizeof(rec_packet), 0, (struct sockaddr *) &serv_addr, &client_sz);
+        if(rec_packet.h.ack == 1)
+        {
+            //do we close server or no?
+            //close connectione
+            exit(0);
+        }
 
         //now have to send the remaining 9 packets
     }

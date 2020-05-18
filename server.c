@@ -25,6 +25,12 @@ struct header
     char pad;
 };
 
+struct packet
+{
+    struct header h;
+    char data[DATA_SIZE];
+};
+
 void check_num(int * num)
 {
     if(*num > 25600)
@@ -33,11 +39,6 @@ void check_num(int * num)
     }
 }
 
-struct packet
-{
-    struct header h;
-    char data[DATA_SIZE];
-};
 
 int main(int argc, char ** argv)
 {
@@ -64,7 +65,6 @@ int main(int argc, char ** argv)
         fprintf(stderr, "error binding socket! \n");
         exit(1);
     }
-    printf("SERVER RUNNING on port %d! \n", port);
     struct packet send_packet = {};
     struct packet rec_packet = {};
     client_sz = sizeof(serv_addr);
@@ -75,12 +75,15 @@ int main(int argc, char ** argv)
     int am_rd;
     while(1)
     {
-        if(open_for_connection)
+        if(open_for_connection == 1)
+        {
+            write(1, "1", 1);
             if((am_rd = recvfrom(socket_fd, &rec_packet, sizeof(rec_packet), 0, (struct sockaddr *) &serv_addr, &client_sz)) < 0)
             {
                 printf("error! \n");
                 exit(1);
             }
+        }
 
         if(rec_packet.h.syn == 1 && rec_packet.h.ack == 0 && am_rd == 12) //meas init connection
         {
@@ -88,7 +91,6 @@ int main(int argc, char ** argv)
             if(0 == 0) //child process
             {
 
-                printf("seq: %d, ack:%d \n", rec_packet.h.seq_num, rec_packet.h.ack_num);
                 //we need to first send back the 2nd part of the 3 way handshake
                 int seq_num = rec_packet.h.seq_num;
                 //struct packet pack = {};
@@ -99,7 +101,7 @@ int main(int argc, char ** argv)
                 send_packet.h.seq_num = rand()%(25600 + 1) + 0;
                 check_num(&expected_seq_num);
                 send_packet.h.ack_num = expected_seq_num;
-                printf("seq: %d, ack:%d \n", send_packet.h.seq_num, send_packet.h.ack_num);
+
                 if(sendto(socket_fd, &send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) //send back handshake
                 {
                     printf("error!");
@@ -123,7 +125,6 @@ int main(int argc, char ** argv)
 
                 if(rec_packet.h.ack == 1 && rec_packet.h.seq_num == expected_seq_num) //check to make sure the ack and seq, num are as expected
                 {
-                    printf("ok connected! \n");
                     //send ack back
                 }
                 else
@@ -136,9 +137,17 @@ int main(int argc, char ** argv)
                 while((am_rd = recvfrom(socket_fd, &rec_packet, sizeof(rec_packet), 0, (struct sockaddr *)& serv_addr, &client_sz)) > 0)
                 {
                     write(1, rec_packet.data, am_rd);
+                    //struct packet * pkt = ((struct packet *) rec_packet);
+                    if(rec_packet.h.fin == 1)
+                    {
+                        bzero((char * ) &send_packet, sizeof(send_packet));
+                        send_packet.h.ack = 1;
+                        sendto(socket_fd, &send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+                        open_for_connection = 1;
+                        break;
+                    }
                     bzero((char * ) &rec_packet, sizeof(rec_packet));
                 }
-                exit(0);
 
             }
             
