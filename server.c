@@ -69,22 +69,25 @@ int main(int argc, char ** argv)
     struct packet rec_packet = {};
     client_sz = sizeof(serv_addr);
     //char buff[50];
-
+    int open_for_connection = 1;
     int wait_for_client = 1;
     //INIT CLIENT CONNECTION
     int am_rd;
     while(1)
     {
-        if((am_rd = recvfrom(socket_fd, &rec_packet, sizeof(rec_packet), 0, (struct sockaddr *) &serv_addr, &client_sz)) < 0)
-        {
-            printf("error! \n");
-            exit(1);
-        }
+        if(open_for_connection)
+            if((am_rd = recvfrom(socket_fd, &rec_packet, sizeof(rec_packet), 0, (struct sockaddr *) &serv_addr, &client_sz)) < 0)
+            {
+                printf("error! \n");
+                exit(1);
+            }
 
         if(rec_packet.h.syn == 1 && rec_packet.h.ack == 0 && am_rd == 12) //meas init connection
         {
-            if(fork() == 0) //child process
+            open_for_connection = 0;
+            if(0 == 0) //child process
             {
+
                 printf("seq: %d, ack:%d \n", rec_packet.h.seq_num, rec_packet.h.ack_num);
                 //we need to first send back the 2nd part of the 3 way handshake
                 int seq_num = rec_packet.h.seq_num;
@@ -94,9 +97,8 @@ int main(int argc, char ** argv)
 
                 int expected_seq_num = seq_num + 1;
                 send_packet.h.seq_num = rand()%(25600 + 1) + 0;
-                send_packet.h.ack_num = seq_num + 1;
-                check_num(&send_packet.h.ack_num);
-
+                check_num(&expected_seq_num);
+                send_packet.h.ack_num = expected_seq_num;
                 printf("seq: %d, ack:%d \n", send_packet.h.seq_num, send_packet.h.ack_num);
                 if(sendto(socket_fd, &send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) //send back handshake
                 {
@@ -106,8 +108,40 @@ int main(int argc, char ** argv)
 
                 //am expecting ACK with data, followe by packets
                 //do a single read, then consec reads till input buffer is empty 
+                bzero((char * ) &rec_packet, sizeof(rec_packet));
+                
+                if((am_rd = recvfrom(socket_fd, &rec_packet, sizeof(rec_packet), 0, (struct sockaddr *)& serv_addr, &client_sz)) < 0)
+                {
+                    printf("error! \n");
+                    exit(1);
+                }
+                else
+                {
+                    write(1, rec_packet.data, am_rd);
+                }
+                
+
+                if(rec_packet.h.ack == 1 && rec_packet.h.seq_num == expected_seq_num) //check to make sure the ack and seq, num are as expected
+                {
+                    printf("ok connected! \n");
+                    //send ack back
+                }
+                else
+                {
+                    printf("invalid 3rd part of handshake!! \n");
+                    exit(1);
+                }
+                
+                //int lasts = rec_packet.h.seq_num;
+                while((am_rd = recvfrom(socket_fd, &rec_packet, sizeof(rec_packet), 0, (struct sockaddr *)& serv_addr, &client_sz)) > 0)
+                {
+                    write(1, rec_packet.data, am_rd);
+                    bzero((char * ) &rec_packet, sizeof(rec_packet));
+                }
+                exit(0);
 
             }
+            
         }
     }
     //can just send data over

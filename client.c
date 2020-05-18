@@ -41,20 +41,30 @@ void check_num(int * num)
         *num = 0; //or do i need to offset this 
     }
 } 
-void sendpackets(int fd, int num_packets, int base_seq)
+void sendpackets(int fd, int rdfd,  int num_packets, int base_seq)
 {
     for(int i = 0; i < num_packets; i++)
     {
         struct packet cur = {};
         check_num(&base_seq);
         cur.h.seq_num = base_seq;
-
-        int rd = read(fd, cur.data, DATA_SIZE); //read data and load into temp buffer, need to send packet now
+        bzero((char * ) &cur, sizeof(cur));
+        int rd = read(rdfd, &cur.data, DATA_SIZE); //read data and load into temp buffer, need to send packet now
         //need to check whether or not rd is 0
-        printf("%d \n", cur.h.seq_num);
-        sendto(fd, &cur, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+        //printf("%s \n", cur.data);
+        //sendto(socket_fd, &send_packet, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr))
+        write(1, cur.data, rd);
+        if(sendto(fd, &cur, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+        {
+            printf("err! \n");
+            exit(1);
+        }
 
         base_seq += rd;
+
+        printf("%d \n", rd);
+        if(rd != DATA_SIZE)
+            return;
 
     }
 }
@@ -139,13 +149,15 @@ int main(int argc, char ** argv)
         send_packet.h.ack = 1;
         send_packet.h.ack_num = rec_packet.h.seq_num + 1;
         send_packet.h.seq_num = rec_packet.h.ack_num;
-
         check_num(&send_packet.h.seq_num);
         check_num(&send_packet.h.ack_num);
-
-        sendto(fd, &send_packet, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-
-        sendpackets(fd, 9, send_packet.h.seq_num + (12 + rd));
+        write(1, send_packet.data, rd);
+        if(sendto(socket_fd, &send_packet, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+        {
+            printf("err!");
+            exit(1);
+        }
+        sendpackets(socket_fd, fd,  9, send_packet.h.seq_num + (12 + rd));
 
         //now have to send the remaining 9 packets
     }
