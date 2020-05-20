@@ -48,22 +48,21 @@ void sendpackets(int fd, int rdfd,  int num_packets, int base_seq)
         struct packet cur = {};
         check_num(&base_seq);
         cur.h.seq_num = base_seq;
-        bzero((char * ) &cur, sizeof(cur));
         int rd = read(rdfd, &cur.data, DATA_SIZE); //read data and load into temp buffer, need to send packet now
         //need to check whether or not rd is 0
         //printf("%s \n", cur.data);
         //sendto(socket_fd, &send_packet, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr))
-        write(1, &cur.data, rd);
+        //write(1, &cur.data, rd);
         // char * bff = ((char *)&cur);
         // char send_bf[524];
         // memcpy(send_bf, bff, 524);
+        printf("%d \n", cur.h.seq_num);
         if(sendto(fd, &cur, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
         {
             printf("err! \n");
             exit(1);
         }
-
-        base_seq += rd;
+        base_seq += (rd + 12);
         if(rd != DATA_SIZE)
             return;
 
@@ -150,14 +149,22 @@ int main(int argc, char ** argv)
         send_packet.h.seq_num = rec_packet.h.ack_num;
         check_num(&send_packet.h.seq_num);
         check_num(&send_packet.h.ack_num);
-        write(1, send_packet.data, rd);
+        //write(1, send_packet.data, rd);
         if(sendto(socket_fd, (char *)&send_packet, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
         {
             printf("err!");
             exit(1);
         }
+        
         sendpackets(socket_fd, fd,  9, send_packet.h.seq_num + (12 + rd));
 
+
+        //basically we send data if we have space in our window, 
+        //if am_rd return 0 then we start shutting down connection
+        
+
+
+        //close connection
         bzero((char * ) &send_packet, sizeof(send_packet));
         send_packet.h.fin = 1;
         sendto(socket_fd, (char *)&send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));

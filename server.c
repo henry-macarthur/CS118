@@ -31,6 +31,16 @@ struct packet
     char data[DATA_SIZE];
 };
 
+int base_seq_num;
+int expected_seq_num; //what we look for whith acks
+int base = 0;
+int end_of_wndow = 9;
+struct packet window[10]; //will hold all of our data;
+char filled[10]; //tells us wether or not we have a packet here
+
+struct sockaddr_in serv_addr, client_addr; //create the structs for the current client server connection
+socklen_t client_length; 
+
 void check_num(int * num)
 {
     if(*num > 25600)
@@ -39,11 +49,70 @@ void check_num(int * num)
     }
 }
 
+void update_index(int * indx)
+{
+    if(*indx >= 10)
+    {
+        *indx = (*indx) - 10;
+    }
+}
+
+//indexing will be base += (seq_num - expected_seq_num)
+//have to deal with edge case that seq_num < expected_seq_num
+//calculate how many packets to end, and how many packets past 0 it is i guess
+
+void sendAck(int fd, int seq_num, int am_rd, struct packet rec)
+{
+    struct packet cur = {};
+    int index;
+    if(seq_num == expected_seq_num)
+    {
+        //can shift base or whatever
+        expected_seq_num += am_rd;
+        window[base] = rec;
+        //should be able to write the data
+        printf("%d, %d \n", base, end_of_wndow);
+        int nxt = base + 1;
+        end_of_wndow += 1;
+        update_index(&end_of_wndow);
+        update_index(&nxt);
+        while(filled[nxt])
+        {
+            //write the data
+            nxt += 1;
+            end_of_wndow += 1;
+            printf("%d, %d \n", nxt, end_of_wndow);
+            update_index(&nxt);
+            update_index(&end_of_wndow);
+        }
+        base = nxt;
+    }   
+    else
+    {
+        //calculate index
+        if(seq_num > expected_seq_num)
+            index = (base + (seq_num - expected_seq_num)/MSG_SIZE); 
+        else
+        {
+            index = ((25600 - expected_seq_num) / MSG_SIZE) + seq_num/MSG_SIZE;
+        }
+        update_index(&index);
+        window[index] = rec;
+        filled[index] = 1;
+    }
+    
+    check_num(&expected_seq_num);
+    cur.h.ack = 1;
+    cur.h.ack_num = expected_seq_num;
+
+    //sendto(fd, &cur, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+}
+
 
 int main(int argc, char ** argv)
 {
-    struct sockaddr_in serv_addr, client_addr; //create the structs for the current client server connection
-    socklen_t client_length; 
+    for(int i = 0; i < 10; i++)
+        filled[i] = 0;
     char host_name[10] = "localhost";
     int port = atoi(argv[1]); //grab the port from input for now
     int client_sz;
@@ -77,7 +146,6 @@ int main(int argc, char ** argv)
     {
         if(open_for_connection == 1)
         {
-            write(1, "1", 1);
             if((am_rd = recvfrom(socket_fd, &rec_packet, sizeof(rec_packet), 0, (struct sockaddr *) &serv_addr, &client_sz)) < 0)
             {
                 printf("error! \n");
@@ -97,7 +165,7 @@ int main(int argc, char ** argv)
                 send_packet.h.ack = 1;
                 send_packet.h.syn = 1;
 
-                int expected_seq_num = seq_num + 1;
+                expected_seq_num = seq_num + 1;
                 send_packet.h.seq_num = rand()%(25600 + 1) + 0;
                 check_num(&expected_seq_num);
                 send_packet.h.ack_num = expected_seq_num;
@@ -119,13 +187,14 @@ int main(int argc, char ** argv)
                 }
                 else
                 {
-                    write(1, rec_packet.data, am_rd);
+                   // write(1, rec_packet.data, am_rd);
                 }
                 
 
                 if(rec_packet.h.ack == 1 && rec_packet.h.seq_num == expected_seq_num) //check to make sure the ack and seq, num are as expected
                 {
-                    //send ack back
+                    base_seq_num = rec_packet.h.seq_num;
+                    sendAck(socket_fd, rec_packet.h.seq_num, am_rd, rec_packet);
                 }
                 else
                 {
@@ -136,8 +205,12 @@ int main(int argc, char ** argv)
                 //int lasts = rec_packet.h.seq_num;
                 while((am_rd = recvfrom(socket_fd, &rec_packet, sizeof(rec_packet), 0, (struct sockaddr *)& serv_addr, &client_sz)) > 0)
                 {
-                    write(1, rec_packet.data, am_rd);
+                    //write(1, rec_packet.data, am_rd);
                     //struct packet * pkt = ((struct packet *) rec_packet);
+                    //printf("%d %d \n", expected_seq_num, rec_packet.h.seq_num);
+
+
+                    //close connection, this needs to be updated to close server side!
                     if(rec_packet.h.fin == 1)
                     {
                         bzero((char * ) &send_packet, sizeof(send_packet));
@@ -146,6 +219,11 @@ int main(int argc, char ** argv)
                         open_for_connection = 1;
                         break;
                     }
+                    else
+                    {
+                        sendAck(socket_fd, rec_packet.h.seq_num, am_rd, rec_packet);
+                    }
+                    
                     bzero((char * ) &rec_packet, sizeof(rec_packet));
                 }
 
