@@ -34,21 +34,37 @@ struct packet
     char data[DATA_SIZE];
 };
 
+int base_index = 0;
+int end_of_window = 0;
+struct packet window[10]; //will hold all of our data;
+int packet_sizes[10];
+char filled[10]; //tells us wether or not we have a packet here
+int last_seq = -1;
+int last_packet_length;
+
 void check_num(int * num)
 {
-    if(*num > 25600)
-    {
-        *num = 0; //or do i need to offset this 
-    }
+    *num = *num % 25601;
 } 
-void sendpackets(int fd, int rdfd,  int num_packets, int base_seq)
+
+void check_index(int * index)
 {
+    if(*index >= 10)
+    {
+        *index = 0;
+    }
+}
+void sendpackets(int fd, int rdfd,  int num_packets, int * base)
+{
+    int base_seq = *base;
     for(int i = 0; i < num_packets; i++)
     {
         struct packet cur = {};
-        check_num(&base_seq);
-        cur.h.seq_num = base_seq;
+        check_num(base);
+        cur.h.seq_num = *base;
         int rd = read(rdfd, &cur.data, DATA_SIZE); //read data and load into temp buffer, need to send packet now
+        if(rd <= 0)
+            return;
         //need to check whether or not rd is 0
         //printf("%s \n", cur.data);
         //sendto(socket_fd, &send_packet, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr))
@@ -56,13 +72,26 @@ void sendpackets(int fd, int rdfd,  int num_packets, int base_seq)
         // char * bff = ((char *)&cur);
         // char send_bf[524];
         // memcpy(send_bf, bff, 524);
-        printf("%d \n", cur.h.seq_num);
+        //printf("%d \n", rd);
         if(sendto(fd, &cur, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
         {
             printf("err! \n");
             exit(1);
         }
-        base_seq += (rd + 12);
+        end_of_window++;
+        if(rd != 512)
+        {
+            last_seq = cur.h.seq_num;
+            last_packet_length = rd + 12;
+        
+        }
+        check_index(&end_of_window);
+        window[end_of_window] = cur;
+        //printf("WINDOW %d %d\n", end_of_window, base_index);
+        packet_sizes[end_of_window] = 12 + rd;
+
+        *base += (rd + 12);
+        check_num(base);
         if(rd != DATA_SIZE)
             return;
 
@@ -70,6 +99,9 @@ void sendpackets(int fd, int rdfd,  int num_packets, int base_seq)
 }
 int main(int argc, char ** argv)
 {    //create the structs for the current client server connection
+    for(int i = 0; i < 10; i++)
+        packet_sizes[i] = 0;
+
     socklen_t client_length; 
     char * host_name = argv[1];
     int port = atoi(argv[2]); //grab the port from input for now
@@ -140,6 +172,7 @@ int main(int argc, char ** argv)
     if(valid) //we are ready to start sending data!
     {
     //ready to send back 3rd part of the handshake
+        int expected;
         fd = open(filename, O_RDONLY);
         bzero((char * ) &send_packet, sizeof(send_packet));
         int rd = read(fd, send_packet.data, DATA_SIZE);
@@ -149,14 +182,45 @@ int main(int argc, char ** argv)
         send_packet.h.seq_num = rec_packet.h.ack_num;
         check_num(&send_packet.h.seq_num);
         check_num(&send_packet.h.ack_num);
+
+        packet_sizes[base_index] = 12 + rd;
+        printf("%d %d \n", base_index, packet_sizes[base_index]);
+        window[base_index] = send_packet;
         //write(1, send_packet.data, rd);
         if(sendto(socket_fd, (char *)&send_packet, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
         {
             printf("err!");
             exit(1);
         }
-        
-        sendpackets(socket_fd, fd,  9, send_packet.h.seq_num + (12 + rd));
+        int next = send_packet.h.seq_num + (rd + 12);
+        expected = send_packet.h.seq_num + (rd + 12);
+        sendpackets(socket_fd, fd,  9, &next);
+
+        int end = 1;
+        while(end)
+        {
+            am_rd = recvfrom(socket_fd, &rec_packet, 12, 0, (struct sockaddr *) &serv_addr, &client_sz);
+            printf("%d, %d, %d \n", rec_packet.h.ack_num, expected, am_rd);
+            if(rec_packet.h.ack == 1 && rec_packet.h.ack_num == expected) // will need to expand this later when i add a window
+            {
+                printf("%d %d %d \n", base_index, end_of_window ,packet_sizes[base_index]);
+                if(rec_packet.h.ack_num == last_seq)
+                {
+                    expected += last_packet_length;
+                    end = 0;
+                }
+                else
+                    expected += packet_sizes[base_index];
+                base_index++;
+                sendpackets(socket_fd, fd,  1, &next);
+                check_index(&base_index);
+                check_num(&expected);
+
+                
+            }
+            if(am_rd != 12)
+                break;
+        }
 
 
         //basically we send data if we have space in our window, 
@@ -165,18 +229,18 @@ int main(int argc, char ** argv)
 
 
         //close connection
-        bzero((char * ) &send_packet, sizeof(send_packet));
-        send_packet.h.fin = 1;
-        sendto(socket_fd, (char *)&send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+        // bzero((char * ) &send_packet, sizeof(send_packet));
+        // send_packet.h.fin = 1;
+        // sendto(socket_fd, (char *)&send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 
-        bzero((char * ) &rec_packet, sizeof(rec_packet));
-        recvfrom(socket_fd, &rec_packet, sizeof(rec_packet), 0, (struct sockaddr *) &serv_addr, &client_sz);
-        if(rec_packet.h.ack == 1)
-        {
-            //do we close server or no?
-            //close connectione
-            exit(0);
-        }
+        // bzero((char * ) &rec_packet, sizeof(rec_packet));
+        // recvfrom(socket_fd, &rec_packet, sizeof(rec_packet), 0, (struct sockaddr *) &serv_addr, &client_sz);
+        // if(rec_packet.h.ack == 1)
+        // {
+        //     //do we close server or no?
+        //     //close connectione
+        //     exit(0);
+        // }
 
         //now have to send the remaining 9 packets
     }

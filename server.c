@@ -43,10 +43,11 @@ socklen_t client_length;
 
 void check_num(int * num)
 {
-    if(*num > 25600)
-    {
-        *num = 0; //or do i need to offset this 
-    }
+    *num = *num % 25601;
+    // if(*num > 25600)
+    // {
+    //     *num = 0; //or do i need to offset this 
+    // }
 }
 
 void update_index(int * indx)
@@ -64,49 +65,65 @@ void update_index(int * indx)
 void sendAck(int fd, int seq_num, int am_rd, struct packet rec)
 {
     struct packet cur = {};
-    int index;
+    printf("%d, %d, %d \n", expected_seq_num, seq_num, am_rd);
     if(seq_num == expected_seq_num)
     {
-        //can shift base or whatever
-        expected_seq_num += am_rd;
-        window[base] = rec;
-        //should be able to write the data
-        printf("%d, %d \n", base, end_of_wndow);
-        int nxt = base + 1;
-        end_of_wndow += 1;
-        update_index(&end_of_wndow);
-        update_index(&nxt);
-        while(filled[nxt])
-        {
-            //write the data
-            nxt += 1;
-            end_of_wndow += 1;
-            printf("%d, %d \n", nxt, end_of_wndow);
-            update_index(&nxt);
-            update_index(&end_of_wndow);
-        }
-        base = nxt;
-    }   
-    else
-    {
-        //calculate index
-        if(seq_num > expected_seq_num)
-            index = (base + (seq_num - expected_seq_num)/MSG_SIZE); 
-        else
-        {
-            index = ((25600 - expected_seq_num) / MSG_SIZE) + seq_num/MSG_SIZE;
-        }
-        update_index(&index);
-        window[index] = rec;
-        filled[index] = 1;
+        //write out the data, 
+        expected_seq_num += (am_rd);
+        check_num(&expected_seq_num);
     }
-    
-    check_num(&expected_seq_num);
     cur.h.ack = 1;
-    cur.h.ack_num = expected_seq_num;
+    cur.h.ack_num  = expected_seq_num; 
+    printf("%d \n", expected_seq_num);
+    sendto(fd, &cur, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 
-    //sendto(fd, &cur, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 }
+// void sendAck(int fd, int seq_num, int am_rd, struct packet rec)
+// {
+//     struct packet cur = {};
+//     int index;
+//     if(seq_num == expected_seq_num)
+//     {
+//         //can shift base or whatever
+//         expected_seq_num += am_rd;
+//         window[base] = rec;
+//         //should be able to write the data
+//         printf("%d, %d \n", base, end_of_wndow);
+//         int nxt = base + 1;
+//         end_of_wndow += 1;
+//         update_index(&end_of_wndow);
+//         update_index(&nxt);
+//         while(filled[nxt])
+//         {
+//             //write the data
+//             nxt += 1;
+//             end_of_wndow += 1;
+//             printf("%d, %d \n", nxt, end_of_wndow);
+//             update_index(&nxt);
+//             update_index(&end_of_wndow);
+//         }
+//         base = nxt;
+//     }   
+//     else
+//     {
+//         //calculate index
+//         if(seq_num > expected_seq_num)
+//             index = (base + (seq_num - expected_seq_num)/MSG_SIZE); 
+//         else
+//         {
+//             index = ((25600 - expected_seq_num) / MSG_SIZE) + seq_num/MSG_SIZE;
+//         }
+//         update_index(&index);
+//         window[index] = rec;
+//         filled[index] = 1;
+//     }
+    
+//     check_num(&expected_seq_num);
+//     cur.h.ack = 1;
+//     cur.h.ack_num = expected_seq_num;
+
+//     //sendto(fd, &cur, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+// }
 
 
 int main(int argc, char ** argv)
