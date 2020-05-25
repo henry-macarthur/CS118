@@ -15,6 +15,7 @@
 #define DATA_SIZE 512
 #define HEADER_SIZE 12
 
+
 struct header
 {
     int seq_num;
@@ -37,17 +38,14 @@ int base = 0;
 int end_of_wndow = 9;
 struct packet window[10]; //will hold all of our data;
 char filled[10]; //tells us wether or not we have a packet here
-
+int file_num = 1;
+int file;
 struct sockaddr_in serv_addr, client_addr; //create the structs for the current client server connection
 socklen_t client_length; 
 
 void check_num(int * num)
 {
     *num = *num % 25601;
-    // if(*num > 25600)
-    // {
-    //     *num = 0; //or do i need to offset this 
-    // }
 }
 
 void update_index(int * indx)
@@ -65,17 +63,20 @@ void update_index(int * indx)
 void sendAck(int fd, int seq_num, int am_rd, struct packet rec)
 {
     struct packet cur = {};
-    printf("%d, %d, %d \n", expected_seq_num, seq_num, am_rd);
+    //printf("%d, %d, %d \n", expected_seq_num, seq_num, am_rd);
     if(seq_num == expected_seq_num)
     {
+        //printf("%d %d\n", seq_num, am_rd);
         //write out the data, 
+        write(file, rec.data, am_rd - 12);
         expected_seq_num += (am_rd);
         check_num(&expected_seq_num);
     }
     cur.h.ack = 1;
     cur.h.ack_num  = expected_seq_num; 
-    printf("%d \n", expected_seq_num);
+    //printf("%d \n", expected_seq_num);
     sendto(fd, &cur, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+    printf("sendAck %d \n", cur.h.ack_num);
 
 }
 // void sendAck(int fd, int seq_num, int am_rd, struct packet rec)
@@ -173,9 +174,19 @@ int main(int argc, char ** argv)
         if(rec_packet.h.syn == 1 && rec_packet.h.ack == 0 && am_rd == 12) //meas init connection
         {
             open_for_connection = 0;
+
+            char file_name[100];
+            bzero(file_name, 100);
+            char * ending = ".file";
+            sprintf(file_name, "%d%s", file_num, ending);
+            file_num++;
+            file = open(file_name, O_CREAT | O_RDWR, S_IRWXU);
+            if(file > 0)
+            {
+                open("%d \n", file);
+            }
             if(0 == 0) //child process
             {
-
                 //we need to first send back the 2nd part of the 3 way handshake
                 int seq_num = rec_packet.h.seq_num;
                 //struct packet pack = {};
@@ -233,16 +244,33 @@ int main(int argc, char ** argv)
                         bzero((char * ) &send_packet, sizeof(send_packet));
                         send_packet.h.ack = 1;
                         sendto(socket_fd, &send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-                        open_for_connection = 1;
+                        bzero((char * ) &send_packet, sizeof(send_packet));
+                        send_packet.h.fin = 1;
+                        sendto(socket_fd, &send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+                        //open_for_connection = 1;
                         break;
                     }
                     else
                     {
                         sendAck(socket_fd, rec_packet.h.seq_num, am_rd, rec_packet);
+
                     }
                     
                     bzero((char * ) &rec_packet, sizeof(rec_packet));
                 }
+                
+                bzero((char * ) &rec_packet, sizeof(send_packet));
+                recvfrom(socket_fd, &rec_packet, 12, 0, (struct sockaddr *)& serv_addr, &client_sz);
+                if(rec_packet.h.ack == 1)
+                {
+                    open_for_connection = 1;
+                    close(file);
+                }
+                else
+                {
+                    exit(1);
+                }
+                
 
             }
             
