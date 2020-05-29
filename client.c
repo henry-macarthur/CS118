@@ -362,15 +362,18 @@ int main(int argc, char ** argv)
         fexpected = send_packet.h.seq_num + 1;
         gettimeofday(&tm, NULL);
         double snd = (tm.tv_sec) * 1000 + (tm.tv_usec) / 1000;
+        int ack_lost = 0;
         while(1)
         {
             gettimeofday(&tm, NULL);
             cur_time = (tm.tv_sec) * 1000 + (tm.tv_usec) / 1000;
             if(cur_time - snd > 500)
             {
-                printf("TIMEOUT %d\n", 0); //fix
-                printf("RESEND %d %d FIN\n", 0, 0);
+                printf("TIMEOUT %d\n", last_seq); //fix
+                printf("RESEND %d %d FIN\n", last_seq, 0);
                 send_packet.h.seq_num = last_seq;
+                if(ack_lost)
+                    exit(1);
                 sendto(socket_fd, (char *)&send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
                 snd = cur_time;
             }
@@ -381,6 +384,19 @@ int main(int argc, char ** argv)
                 {
                     printf("RECV %d %d ACK\n", rec_packet.h.seq_num, rec_packet.h.ack_num);
                     break;
+                }
+                else if(rec_packet.h.fin == 1)
+                {
+                    printf("RECV %d %d FIN\n", rec_packet.h.seq_num, rec_packet.h.ack_num);
+                    ack_lost = 1;
+                    bzero((char * ) &send_packet, sizeof(send_packet));
+                    send_packet.h.ack = 1;
+                    send_packet.h.seq_num = last_seq + 1;
+                    send_packet.h.ack_num = rec_packet.h.seq_num + 1;
+                    sendto(socket_fd, (char *)&send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+                    printf("SEND %d %d ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                    //send ACK
+                    //get ready to close connection
                 }
             }
         }

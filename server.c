@@ -209,6 +209,7 @@ int main(int argc, char ** argv)
                         //close connection, this needs to be updated to close server side!
                         if(rec_packet.h.fin == 1)
                         {
+                            printf("RECV %d %d FIN\n", rec_packet.h.seq_num, rec_packet.h.ack);
                             bzero((char * ) &send_packet, sizeof(send_packet));
                             send_packet.h.ack = 1;
                             send_packet.h.seq_num = sqn;
@@ -256,7 +257,7 @@ int main(int argc, char ** argv)
                     {
                         if(rec_packet.h.ack == 1)
                         {
-                            printf("RECV %d %d ACK\n", rec_packet.h.seq_num, rec_packet.h.ack);
+                            printf("RECV %d %d ACK\n", rec_packet.h.seq_num, rec_packet.h.ack_num);
                             open_for_connection = 1;
                             close(file);
                             break;
