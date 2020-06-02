@@ -51,7 +51,7 @@ struct timeval  tm;
 double first, cur_time;
 int last_packet = 0;
 int final_expected;
-
+int in_window = 0;
 void check_num(int * num)
 {
     *num = *num % 25601;
@@ -76,14 +76,8 @@ void sendpackets(int fd, int rdfd,  int num_packets, int * base)
         int rd = read(rdfd, &cur.data, DATA_SIZE); //read data and load into temp buffer, need to send packet now
         if(rd <= 0)
             return;
-        //need to check whether or not rd is 0
-        //printf("%s \n", cur.data);
-        //sendto(socket_fd, &send_packet, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr))
-        //write(1, &cur.data, rd);
-        // char * bff = ((char *)&cur);
-        // char send_bf[524];
-        // memcpy(send_bf, bff, 524);
-        //printf("%d \n", rd);
+        if(in_window != 10)
+            in_window++;
         if(sendto(fd, &cur, 12 + rd, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
         {
             printf("err! \n");
@@ -216,7 +210,6 @@ int main(int argc, char ** argv)
         fd = open(filename, O_RDONLY);
         bzero((char * ) &send_packet, sizeof(send_packet));
         int rd = read(fd, send_packet.data, DATA_SIZE);
-        
         send_packet.h.ack = 1;
         send_packet.h.ack_num = rec_packet.h.seq_num + 1;
         send_packet.h.seq_num = rec_packet.h.ack_num;
@@ -235,6 +228,11 @@ int main(int argc, char ** argv)
         else
         {
             printf("SEND %d %d ACK\n", send_packet.h.seq_num, send_packet.h.ack_num); //if we have to resend this, i
+            if(rd < DATA_SIZE)
+            {
+                last_seq = send_packet.h.seq_num + 12 + rd;
+                last_packet = 1;
+            }
         }
         //exit(1);
         gettimeofday(&tm, NULL);
@@ -259,7 +257,7 @@ int main(int argc, char ** argv)
                 //resend the entire window
                 int i = base_index;
                 int counter = 0;
-                while(counter < 10)
+                while(counter < in_window)
                 {
 
                     sendto(socket_fd, &window[i], packet_sizes[i], 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
@@ -415,7 +413,7 @@ int main(int argc, char ** argv)
                     send_packet.h.seq_num = last_seq + 1;
                     send_packet.h.ack_num = rec_packet.h.seq_num + 1;
                     sendto(socket_fd, (char *)&send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-                    printf("SEND %d %d ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                    printf("SEND %d %d DUP-ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
                     start_end = 1;
                     gettimeofday(&tm, NULL);
                     cur_time = (tm.tv_sec) * 1000 + (tm.tv_usec) / 1000;
@@ -431,37 +429,6 @@ int main(int argc, char ** argv)
                 exit(0);
             }
         }
-
-        // bzero((char * ) &rec_packet, sizeof(rec_packet));
-        // int am = recvfrom(socket_fd, &rec_packet, 12, 0, (struct sockaddr *) &serv_addr, &client_sz);
-        // if(rec_packet.h.ack == 1)
-        // {
-        //     //wait for servers FIN and then send an ack
-        //     bzero((char * ) &rec_packet, sizeof(rec_packet));
-        //     recvfrom(socket_fd, &rec_packet, 12, 0, (struct sockaddr *) &serv_addr, &client_sz);
-        //     if(rec_packet.h.fin == 1)
-        //     {
-        //         bzero((char * ) &rec_packet, sizeof(rec_packet));
-        //         send_packet.h.ack = 1;
-        //         sendto(socket_fd, (char *)&send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-
-        //         //wait two seconds then leave
-        //         gettimeofday(&tm, NULL);
-        //         cur_time = (tm.tv_sec) * 1000 + (tm.tv_usec) / 1000;
-        //         while(1)
-        //         {
-        //             gettimeofday(&tm, NULL);
-        //             int end = (tm.tv_sec) * 1000 + (tm.tv_usec) / 1000;
-        //             if(end - cur_time >= 2)
-        //             {
-        //                 exit(0); //terminate the program 
-        //             }
-        //         }
-        //         //printf("send ack #%d")
-        //     }
-        // }
-
-        //now have to send the remaining 9 packets
     }
     else
     {
