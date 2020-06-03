@@ -232,6 +232,7 @@ int main(int argc, char ** argv)
             {
                 last_seq = send_packet.h.seq_num + 12 + rd;
                 last_packet = 1;
+                in_window = 1;
             }
         }
         //exit(1);

@@ -135,6 +135,7 @@ int main(int argc, char ** argv)
     int wait_for_client = 1;
     //INIT CLIENT CONNECTION
     int am_rd;
+    int sent_syn_ack = 0;
     while(1)
     {
         //expect the Ack
@@ -164,7 +165,15 @@ int main(int argc, char ** argv)
                     }
                     else
                     {
-                        printf("SEND %d %d SYN ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                        if(sent_syn_ack)
+                        {
+                            printf("SEND %d %d SYN DUP-ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                        }
+                        else
+                        {
+                            printf("SEND %d %d SYN ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                            sent_syn_ack = 1;
+                        }
                         //cur_sq = send_packet.h.seq_num;
                     }
                 }
