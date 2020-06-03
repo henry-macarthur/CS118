@@ -180,7 +180,7 @@ int main(int argc, char ** argv)
 
                     sprintf(file_name, "%d%s", file_num, ending);
                     file_num++;
-                    file = open(file_name, O_CREAT | O_RDWR, S_IRWXU);
+                    file = open(file_name, O_CREAT | O_RDWR, 0777);
                     if(file > 0)
                     {
                         open("%d \n", file);
@@ -264,19 +264,6 @@ int main(int argc, char ** argv)
                         }
                     }
                 }
-                // bzero((char * ) &rec_packet, sizeof(send_packet));
-                // recvfrom(socket_fd, &rec_packet, 12, 0, (struct sockaddr *)& serv_addr, &client_sz);
-                // if(rec_packet.h.ack == 1)
-                // {
-                //     printf("RECV %d %d ACK\n", 0, 0);
-                //     open_for_connection = 1;
-                //     close(file);
-                // }
-                // else
-                // {
-                //     exit(1);
-                // }
-                
 
             }
             

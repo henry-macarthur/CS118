@@ -279,10 +279,7 @@ int main(int argc, char ** argv)
                 }
             
                 first = cur_time;
-                //printf("expected %d \n", expected);
-                // if(num_lost == 10000)
-                //     exit(0);
-                //exit(1);
+
                 continue;
             }
             am_rd = recvfrom(socket_fd, &rec_packet, 12, MSG_DONTWAIT, (struct sockaddr *) &serv_addr, &client_sz);
@@ -343,11 +340,7 @@ int main(int argc, char ** argv)
             }
         }
 
-
-        //basically we send data if we have space in our window, 
-        //if am_rd return 0 then we start shutting down connection
-        
-
+        int sent_fin_ack = 0;
 
         //close connection
         int fexpected;
@@ -392,7 +385,17 @@ int main(int argc, char ** argv)
                     send_packet.h.seq_num = last_seq + 1;
                     send_packet.h.ack_num = rec_packet.h.seq_num + 1;
                     sendto(socket_fd, (char *)&send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-                    printf("SEND %d %d ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                    if(sent_fin_ack)
+                    {
+                        printf("SEND %d %d DUP-ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                    }
+                    else
+                    {
+                        /* code */
+                        printf("SEND %d %d ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                        sent_fin_ack = 1;
+                    }
+                    
                     //send ACK
                     //get ready to close connection
                 }
@@ -413,7 +416,16 @@ int main(int argc, char ** argv)
                     send_packet.h.seq_num = last_seq + 1;
                     send_packet.h.ack_num = rec_packet.h.seq_num + 1;
                     sendto(socket_fd, (char *)&send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-                    printf("SEND %d %d DUP-ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                    //printf("SEND %d %d DUP-ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                    if(sent_fin_ack)
+                    {
+                        printf("SEND %d %d DUP-ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                    }
+                    else
+                    {
+                        printf("SEND %d %d ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                        sent_fin_ack = 1;
+                    }
                     start_end = 1;
                     gettimeofday(&tm, NULL);
                     cur_time = (tm.tv_sec) * 1000 + (tm.tv_usec) / 1000;
