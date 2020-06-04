@@ -205,6 +205,7 @@ int main(int argc, char ** argv)
             }
         }
 
+        int sent_fin = 0;
         if(1) //meas init connection
         {
                 //int lasts = rec_packet.h.seq_num;
@@ -224,15 +225,26 @@ int main(int argc, char ** argv)
                             send_packet.h.seq_num = sqn;
                             send_packet.h.ack_num = rec_packet.h.seq_num + 1;
                             sendto(socket_fd, &send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-                            printf("SEND %d %d ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                            if(sent_fin)
+                                printf("SEND %d %d DUP-ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                            else
+                            {
+                                 printf("SEND %d %d ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                            }
+                            
                             bzero((char * ) &send_packet, sizeof(send_packet));
                             send_packet.h.fin = 1;
                             send_packet.h.seq_num = sqn;
                             sendto(socket_fd, &send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-                            printf("SEND %d %d FIN\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                            if(sent_fin)
+                                printf("RESEND %d %d FIN\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                            else
+                                printf("SEND %d %d FIN\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                            sent_fin = 1;
                             //open_for_connection = 1;
-                            break;
-                        }
+                            break; // this is wrong
+                        } //should wait for ack here before exiting
+                        //else if(rec_packet)
                         else
                         {
                             printf("RECV %d %d\n", rec_packet.h.seq_num, rec_packet.h.ack_num);
@@ -248,6 +260,7 @@ int main(int argc, char ** argv)
                 gettimeofday(&tm, NULL);
                 send_time = (tm.tv_sec) * 1000 + (tm.tv_usec) / 1000;
                 double cur_time;
+                int reset_timer = 0;
                 while(1)
                 {
                     gettimeofday(&tm, NULL);
@@ -257,19 +270,53 @@ int main(int argc, char ** argv)
                         bzero((char * ) &send_packet, sizeof(send_packet));
                         send_packet.h.fin = 1;
                         send_packet.h.seq_num = sqn;
+                        printf("TIMEOUT %d\n", send_packet.h.seq_num);
                         printf("RESEND %d %d FIN\n", send_packet.h.seq_num, 0);
                         sendto(socket_fd, &send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
                         send_time = cur_time;
+                        reset_timer++;
+                        if(reset_timer == 4)
+                        {
+                            open_for_connection = 1;
+                            close(file);
+                            break;
+                        }
                     }
                     bzero((char * ) &rec_packet, sizeof(send_packet));
                     if(recvfrom(socket_fd, &rec_packet, 12, MSG_DONTWAIT, (struct sockaddr *)& serv_addr, &client_sz) > 0)
                     {
+                        reset_timer = 0;
+                        //need to check to see if its a fin
                         if(rec_packet.h.ack == 1)
                         {
                             printf("RECV %d %d ACK\n", rec_packet.h.seq_num, rec_packet.h.ack_num);
                             open_for_connection = 1;
                             close(file);
                             break;
+                        }
+                        if(rec_packet.h.fin)
+                        {
+                            printf("RECV %d %d FIN\n", rec_packet.h.seq_num, rec_packet.h.ack);
+                            bzero((char * ) &send_packet, sizeof(send_packet));
+                            send_packet.h.ack = 1;
+                            send_packet.h.seq_num = sqn;
+                            send_packet.h.ack_num = rec_packet.h.seq_num + 1;
+                            sendto(socket_fd, &send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+                            if(sent_fin)
+                                printf("SEND %d %d DUP-ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                            else
+                            {
+                                 printf("SEND %d %d ACK\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                            }
+                            
+                            bzero((char * ) &send_packet, sizeof(send_packet));
+                            send_packet.h.fin = 1;
+                            send_packet.h.seq_num = sqn;
+                            sendto(socket_fd, &send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
+                            if(sent_fin)
+                                printf("RESEND %d %d FIN\n", send_packet.h.seq_num, send_packet.h.ack_num);
+                            else
+                                printf("SEND %d %d FIN\n", send_packet.h.seq_num, send_packet.h.ack_num);
                         }
                     }
                 }

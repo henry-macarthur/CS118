@@ -252,6 +252,8 @@ int main(int argc, char ** argv)
             //printf("%f\n", cur_time - first);
             if(cur_time - first > 500)
             {
+                if(in_window == 0)
+                    break;
                 printf("TIMEOUT %d\n", next);
                 num_lost++;
                 //write(1, "lost packet \n", 13);
@@ -295,6 +297,8 @@ int main(int argc, char ** argv)
             if(rec_packet.h.ack == 1) //&& (rec_packet.h.ack_num >= expected && rec_packet.h.ack_num <= end|| (rec_packet.h.ack_num <= end && rec_packet.h.ack_num <= expected))) // will need to expand this later when i add a window
             {
                 printf("RECV %d %d ACK\n", rec_packet.h.seq_num, rec_packet.h.ack_num);
+                if(rec_packet.h.ack_num == expected)
+                    in_window--;
                 if(last_packet && rec_packet.h.ack_num == last_seq)
                     break;
                 if(end > expected)
@@ -355,17 +359,25 @@ int main(int argc, char ** argv)
         gettimeofday(&tm, NULL);
         double snd = (tm.tv_sec) * 1000 + (tm.tv_usec) / 1000;
         int ack_lost = 0;
-        while(1)
+        int go = 1;
+        int start_end = 0;
+        gettimeofday(&tm, NULL);
+        double close_base; 
+        while(go)
         {
             gettimeofday(&tm, NULL);
             cur_time = (tm.tv_sec) * 1000 + (tm.tv_usec) / 1000;
-            if(cur_time - snd > 500)
+            if(start_end && cur_time - close_base >= 2000)
+            {
+                exit(0);
+            }
+            if(cur_time - snd > 500 && start_end == 0)
             {
                 printf("TIMEOUT %d\n", last_seq); //fix
                 printf("RESEND %d %d FIN\n", last_seq, 0);
                 send_packet.h.seq_num = last_seq;
-                if(ack_lost)
-                    exit(1);
+                // if(ack_lost)
+                //     exit(1);
                 sendto(socket_fd, (char *)&send_packet, 12, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
                 snd = cur_time;
             }
@@ -375,11 +387,18 @@ int main(int argc, char ** argv)
                 if(rec_packet.h.ack == 1 && rec_packet.h.ack_num == fexpected)
                 {
                     printf("RECV %d %d ACK\n", rec_packet.h.seq_num, rec_packet.h.ack_num);
+                    go = 0;
                     break;
                 }
                 else if(rec_packet.h.fin == 1)
                 {
-                    printf("RECV %d %d FIN\n", rec_packet.h.seq_num, rec_packet.h.ack_num);
+                    printf("RECV %d %d FIN\n", rec_packet.h.seq_num, rec_packet.h.ack_num);\
+                    if(start_end == 0)
+                    {
+                        gettimeofday(&tm, NULL);
+                        close_base = (tm.tv_sec) * 1000 + (tm.tv_usec) / 1000;
+                    }
+                    start_end = 1;
                     ack_lost = 1;
                     bzero((char * ) &send_packet, sizeof(send_packet));
                     send_packet.h.ack = 1;
@@ -403,7 +422,7 @@ int main(int argc, char ** argv)
             }
         }
         //do a blocking wait now for FIN
-        int start_end = 0;
+        int first_fin = 1;
         while(1)
         {
             bzero((char * ) &rec_packet, sizeof(rec_packet));
@@ -411,6 +430,13 @@ int main(int argc, char ** argv)
             {
                 if(rec_packet.h.fin == 1)
                 {
+                    if(first_fin)
+                    {
+                        first_fin = 0;
+                        gettimeofday(&tm, NULL);
+                        cur_time = (tm.tv_sec) * 1000 + (tm.tv_usec) / 1000;
+
+                    }
                     printf("RECV %d %d FIN\n", rec_packet.h.seq_num, rec_packet.h.ack_num);
                     bzero((char * ) &send_packet, sizeof(send_packet));
                     send_packet.h.ack = 1;
@@ -428,8 +454,6 @@ int main(int argc, char ** argv)
                         sent_fin_ack = 1;
                     }
                     start_end = 1;
-                    gettimeofday(&tm, NULL);
-                    cur_time = (tm.tv_sec) * 1000 + (tm.tv_usec) / 1000;
                 }
             }
 
